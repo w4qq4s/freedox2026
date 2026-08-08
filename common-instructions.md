@@ -1,4 +1,5 @@
 1. Ground Rules for Every Team
+
 Every team must:
 Use the common institutional core entities where applicable.
 Design its own vertical ER extension for its assigned problem.
@@ -11,10 +12,12 @@ Document all AI/tool usage.
 No team will be given the final ER model by the organizers — designing it is part of the challenge.
 
 2. Common Core Entities (Given to All Teams)
+
 Institution, Department, Program, Academic Year, Semester, Student, Faculty, Course
 These are conceptual entities only. Each team must design its own vertical extension on top of them for its assigned problem.
 
 3. Technology Selection & Justification
+
 You may use any technology, programming language, framework, database, library, cloud platform, or AI-assisted development tool — but the choice must be a reasoned engineering decision. “AI suggested it” is not a valid justification on its own. Your team is responsible for understanding, testing, validating, integrating and defending every major technology and design decision in your MVP.
 Maintain a single file: docs/technology-decision.md
 Document only your important decisions, not every small library. For each important decision, cover:
