@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-background">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>freedox2026 — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <script type="module">
+      import { api, requireSession, escapeHtml, statusBadge, fmtDate } from "/js/api.js";
+      import { renderShell } from "/js/shell.js";
+
+      const user = requireSession();
+      if (user) {
+        const { page } = renderShell("dashboard", "Dashboard");
+        page.innerHTML = '<div class="row"><div class="spinner"></div><span class="muted">Loading metrics…</span></div>';
+
+        try {
+          const d = await api("/dashboard");
+          const s = d.status_split;
+          page.innerHTML = `
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+              <div class="stat"><div class="label">Total equipment</div><div class="value">${d.total_equipment}</div></div>
+              <div class="stat"><div class="label">Laboratories</div><div class="value">${d.laboratory_count}</div></div>
+              <div class="stat"><div class="label">High-risk items</div><div class="value" style="color:var(--crit)">${d.at_risk_count}</div></div>
+              <div class="stat"><div class="label">Non-functional</div><div class="value" style="color:var(--warn)">${s.non_functional}</div></div>
+            </div>
+
+            <div class="grid mt-6" style="grid-template-columns:1fr 1fr;align-items:start">
+              <div class="card">
+                <h2>Operational status</h2>
+                ${statusRow("Functional", s.functional, d.total_equipment, "var(--ok)")}
+                ${statusRow("Under maintenance", s.under_maintenance, d.total_equipment, "var(--warn)")}
+                ${statusRow("Non-functional", s.non_functional, d.total_equipment, "var(--crit)")}
+                <p class="muted" style="font-size:12px;margin-top:14px">
+                  Aggregates cached via <code>${escapeHtml(d.cache_backend)}</code> · computed ${fmtDate(d.computed_at)}
+                </p>
+              </div>
+              <div class="card">
+                <h2>Recent activity <span class="muted" style="font-weight:400;font-size:12px">(live, never cached)</span></h2>
+                <div id="feed"></div>
+              </div>
+            </div>`;
+
+          const feed = document.getElementById("feed");
+          if (!d.recent_activity.length) {
+            feed.innerHTML = '<p class="muted">No recent activity.</p>';
+          } else {
+            feed.innerHTML = d.recent_activity
+              .map(
+                (a) => `<div class="row between" style="padding:8px 0;border-top:1px solid var(--border)">
+                  <div><span class="badge neutral">${escapeHtml(a.action)}</span>
+                  <span style="margin-left:8px">${escapeHtml(a.entity_type)} #${a.entity_id}</span></div>
+                  <div class="muted" style="font-size:12px">${escapeHtml(a.actor_email)} · ${fmtDate(a.created_at)}</div>
+                </div>`
+              )
+              .join("");
+          }
+        } catch (err) {
+          page.innerHTML = `<div class="empty">Failed to load dashboard: ${escapeHtml(err.message)}</div>`;
+        }
+      }
+
+      function statusRow(label, count, total, color) {
+        const pct = total ? Math.round((count / total) * 100) : 0;
+        return `<div style="margin-bottom:12px">
+          <div class="row between" style="font-size:14px;margin-bottom:4px">
+            <span>${label}</span><span class="mono">${count} · ${pct}%</span></div>
+          <div class="risk-bar" style="width:100%"><span style="width:${pct}%;background:${color}"></span></div>
+        </div>`;
+      }
+    </script>
+  </body>
+</html>

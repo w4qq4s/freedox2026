@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-background">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>freedox2026 — Equipment</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <script type="module">
+      import {
+        api, requireSession, hasRank, escapeHtml,
+        statusBadge, riskBar, riskBadge,
+      } from "/js/api.js";
+      import { renderShell } from "/js/shell.js";
+
+      const user = requireSession();
+      if (user) {
+        const { page, actions } = renderShell("equipment", "Equipment");
+
+        if (hasRank(user.role, "dept_head")) {
+          const add = document.createElement("a");
+          add.className = "btn primary";
+          add.href = "/equipment-form.html";
+          add.textContent = "+ Add equipment";
+          actions.appendChild(add);
+        }
+
+        const [labs, categories] = await Promise.all([api("/laboratories"), api("/categories")]);
+
+        page.innerHTML = `
+          <div class="card">
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+              <div class="field" style="margin:0">
+                <label>Search by name</label>
+                <input id="f-search" placeholder="e.g. microscope" />
+              </div>
+              <div class="field" style="margin:0">
+                <label>Status</label>
+                <select id="f-status">
+                  <option value="">All statuses</option>
+                  <option value="functional">Functional</option>
+                  <option value="under_maintenance">Under maintenance</option>
+                  <option value="non_functional">Non-functional</option>
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label>Category</label>
+                <select id="f-cat"><option value="">All categories</option>
+                  ${categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")}
+                </select>
+              </div>
+              <div class="field" style="margin:0">
+                <label>Laboratory</label>
+                <select id="f-lab"><option value="">All labs</option>
+                  ${labs.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("")}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div id="results" class="mt-4"></div>`;
+
+        const results = document.getElementById("results");
+        const inputs = ["f-search", "f-status", "f-cat", "f-lab"].map((id) => document.getElementById(id));
+
+        let timer;
+        const debounced = () => {
+          clearTimeout(timer);
+          timer = setTimeout(load, 250);
+        };
+        inputs[0].addEventListener("input", debounced);
+        inputs.slice(1).forEach((el) => el.addEventListener("change", load));
+
+        async function load() {
+          results.innerHTML = '<div class="row"><div class="spinner"></div></div>';
+          const params = new URLSearchParams();
+          if (inputs[0].value.trim()) params.set("search", inputs[0].value.trim());
+          if (inputs[1].value) params.set("status", inputs[1].value);
+          if (inputs[2].value) params.set("category_id", inputs[2].value);
+          if (inputs[3].value) params.set("laboratory_id", inputs[3].value);
+          try {
+            const list = await api(`/equipment?${params.toString()}`);
+            if (!list.length) {
+              results.innerHTML = '<div class="empty">No equipment matches your filters.</div>';
+              return;
+            }
+            results.innerHTML = `<p class="muted" style="font-size:13px;margin-bottom:8px">${list.length} result(s)</p>
+              <div class="table-wrap"><table>
+              <thead><tr><th>Equipment</th><th>Lab</th><th>Category</th><th>Status</th><th>Qty</th><th>Year</th><th>Risk</th><th></th></tr></thead>
+              <tbody>${list
+                .map(
+                  (e) => `<tr>
+                    <td><strong>${escapeHtml(e.name)}</strong></td>
+                    <td class="muted">${escapeHtml(e.laboratory_name)}</td>
+                    <td class="muted">${escapeHtml(e.category_name)}</td>
+                    <td>${statusBadge(e.status)}</td>
+                    <td class="mono">${e.quantity}</td>
+                    <td class="mono">${e.purchase_year}</td>
+                    <td><div class="row">${riskBar(e.risk)} ${riskBadge(e.risk)}</div></td>
+                    <td><a class="btn sm" href="/equipment-detail.html?id=${e.id}">View</a></td>
+                  </tr>`
+                )
+                .join("")}</tbody></table></div>`;
+          } catch (err) {
+            results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+          }
+        }
+
+        load();
+      }
+    </script>
+  </body>
+</html>
