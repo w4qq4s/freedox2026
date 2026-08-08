@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-background">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>freedox2026 — Sign in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div class="center-screen">
+      <div class="auth-card">
+        <div class="brand" style="padding-left: 0">
+          <span class="dot"></span> freedox<span class="muted">2026</span>
+        </div>
+        <p class="muted" style="margin-bottom: 24px; font-size: 14px">
+          Laboratory equipment tracking &amp; audit platform
+        </p>
+        <form id="login-form">
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+          <div class="field err hidden" id="form-error" aria-live="polite"></div>
+          <button type="submit" class="btn primary" id="submit-btn" style="width: 100%; justify-content: center">
+            Sign in
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script type="module">
+      import { api, setSession, getUser } from "/js/api.js";
+
+      // Already signed in? Skip straight to the dashboard.
+      if (getUser()) location.href = "/dashboard.html";
+
+      const form = document.getElementById("login-form");
+      const btn = document.getElementById("submit-btn");
+      const errBox = document.getElementById("form-error");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        errBox.classList.add("hidden");
+        btn.disabled = true;
+        btn.textContent = "Signing in…";
+        try {
+          const data = await api("/auth/login", {
+            method: "POST",
+            body: {
+              email: document.getElementById("email").value.trim(),
+              password: document.getElementById("password").value,
+            },
+          });
+          setSession(data.access_token, data.user);
+          location.href = "/dashboard.html";
+        } catch (err) {
+          errBox.textContent = err.message;
+          errBox.classList.remove("hidden");
+          btn.disabled = false;
+          btn.textContent = "Sign in";
+        }
+      });
+    </script>
+  </body>
+</html>
