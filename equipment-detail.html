@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-background">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>freedox2026 — Equipment detail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <script type="module">
+      import {
+        api, requireSession, hasRank, escapeHtml, toast,
+        statusBadge, riskBadge, fmtDate, fmtDay,
+      } from "/js/api.js";
+      import { renderShell } from "/js/shell.js";
+
+      const user = requireSession();
+      const id = new URLSearchParams(location.search).get("id");
+
+      if (user && !id) location.href = "/equipment.html";
+      else if (user) {
+        const { page, actions } = renderShell("equipment", "Equipment detail");
+        await load(page, actions);
+      }
+
+      async function load(page, actions) {
+        page.innerHTML = '<div class="row"><div class="spinner"></div></div>';
+        actions.innerHTML = "";
+        let data;
+        try {
+          data = await api(`/equipment/${id}`);
+        } catch (err) {
+          page.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+          return;
+        }
+        const e = data.equipment;
+        const r = e.risk;
+
+        // Top bar actions by role.
+        if (hasRank(user.role, "dept_head")) {
+          actions.innerHTML = `<a class="btn" href="/equipment-form.html?id=${e.id}">Edit</a>
+            <button class="btn danger" id="del-btn">Delete</button>`;
+        }
+
+        page.innerHTML = `
+          <a href="/equipment.html" class="muted" style="font-size:13px">← All equipment</a>
+          <div class="grid mt-4" style="grid-template-columns:2fr 1fr;align-items:start">
+            <div>
+              <div class="card">
+                <div class="row between wrap">
+                  <div>
+                    <h2 style="margin:0">${escapeHtml(e.name)}</h2>
+                    <p class="muted" style="font-size:13px">${escapeHtml(e.laboratory_name)} · ${escapeHtml(e.category_name)}</p>
+                  </div>
+                  ${statusBadge(e.status)}
+                </div>
+                <div class="grid mt-4" style="grid-template-columns:repeat(3,1fr)">
+                  <div><div class="label muted" style="font-size:12px">QUANTITY</div><div class="mono" style="font-size:18px">${e.quantity}</div></div>
+                  <div><div class="label muted" style="font-size:12px">PURCHASE YEAR</div><div class="mono" style="font-size:18px">${e.purchase_year}</div></div>
+                  <div><div class="label muted" style="font-size:12px">AGE</div><div class="mono" style="font-size:18px">${r.age_years} yrs</div></div>
+                </div>
+              </div>
+
+              ${statusControl(e)}
+
+              <div class="card mt-4">
+                <div class="row between">
+                  <h2 style="margin:0">Maintenance history</h2>
+                  <button class="btn sm primary" id="add-maint">+ Log maintenance</button>
+                </div>
+                <div id="maint-list" class="mt-4"></div>
+              </div>
+
+              <div class="card mt-4">
+                <h2>Audit trail <span class="muted" style="font-weight:400;font-size:12px">(hash-chained, append-only)</span></h2>
+                <div id="audit-list"></div>
+              </div>
+            </div>
+
+            <div>
+              <div class="card">
+                <h2>Risk score</h2>
+                <div class="row" style="gap:16px">
+                  <div style="font-size:44px;font-weight:700;font-family:var(--mono);color:${riskColor(r.band)}">${r.score}</div>
+                  <div>${riskBadge(r)}<div class="muted" style="font-size:12px;margin-top:4px">out of 100</div></div>
+                </div>
+                <div class="mt-4">
+                  ${breakdownRow("Age", r.age_points, 50)}
+                  ${breakdownRow("Neglect", r.neglect_points, 30)}
+                  ${breakdownRow("Status", r.status_points, 20)}
+                </div>
+                <p class="muted mono" style="font-size:11px;margin-top:12px;line-height:1.5">${escapeHtml(r.formula)}</p>
+              </div>
+
+              <div class="card mt-4">
+                <h2>QR verification token</h2>
+                <p class="muted" style="font-size:13px">HMAC-signed payload. The kiosk verifies the signature before showing any data — a tampered code is rejected.</p>
+                <code style="display:block;word-break:break-all;background:var(--bg);padding:10px;border-radius:6px;border:1px solid var(--border);font-size:12px;margin:10px 0">${escapeHtml(data.qr_payload || "Not generated")}</code>
+                ${
+                  data.qr_payload
+                    ? `<a class="btn sm" href="/kiosk.html?payload=${encodeURIComponent(data.qr_payload)}">Open in kiosk →</a>`
+                    : ""
+                }
+              </div>
+            </div>
+          </div>`;
+
+        renderMaint(data.maintenance);
+        renderAudit(data.audit_trail);
+
+        // Wire actions
+        const delBtn = document.getElementById("del-btn");
+        if (delBtn)
+          delBtn.addEventListener("click", async () => {
+            if (!confirm(`Delete "${e.name}"? This is recorded in the audit log.`)) return;
+            try {
+              await api(`/equipment/${id}`, { method: "DELETE" });
+              toast("Equipment deleted", "success");
+              location.href = "/equipment.html";
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          });
+
+        const statusForm = document.getElementById("status-form");
+        if (statusForm)
+          statusForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const val = document.getElementById("status-select").value;
+            try {
+              await api(`/equipment/${id}`, { method: "PATCH", body: { status: val } });
+              toast("Status updated", "success");
+              load(page, actions);
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          });
+
+        document.getElementById("add-maint").addEventListener("click", () => openMaint(page, actions));
+      }
+
+      function statusControl(e) {
+        // Everyone lab_assistant+ can change status here.
+        const opts = ["functional", "under_maintenance", "non_functional"]
+          .map((s) => `<option value="${s}" ${s === e.status ? "selected" : ""}>${escapeHtml(labelize(s))}</option>`)
+          .join("");
+        return `<div class="card mt-4"><form id="status-form" class="row" style="align-items:flex-end;gap:12px">
+          <div class="field" style="margin:0;flex:1"><label>Update operational status</label>
+            <select id="status-select">${opts}</select></div>
+          <button class="btn primary" type="submit">Save status</button>
+        </form></div>`;
+      }
+
+      function labelize(s) {
+        return { functional: "Functional", under_maintenance: "Under maintenance", non_functional: "Non-functional" }[s];
+      }
+      function riskColor(band) {
+        return band === "High" ? "var(--crit)" : band === "Medium" ? "var(--warn)" : "var(--ok)";
+      }
+      function breakdownRow(label, pts, max) {
+        const pct = Math.round((pts / max) * 100);
+        return `<div style="margin-bottom:10px">
+          <div class="row between" style="font-size:13px"><span>${label}</span><span class="mono">${pts}/${max}</span></div>
+          <div class="risk-bar" style="width:100%"><span style="width:${pct}%;background:var(--primary)"></span></div></div>`;
+      }
+
+      function renderMaint(list) {
+        const host = document.getElementById("maint-list");
+        if (!list.length) {
+          host.innerHTML = '<p class="muted">No maintenance logged yet.</p>';
+          return;
+        }
+        host.innerHTML = list
+          .map(
+            (m) => `<div style="padding:10px 0;border-top:1px solid var(--border)">
+              <div class="row between"><strong class="mono">${fmtDay(m.performed_on)}</strong>
+              <span class="muted" style="font-size:12px">${escapeHtml(m.logged_by_email)}</span></div>
+              <p style="font-size:14px;margin-top:4px">${escapeHtml(m.notes || "—")}</p></div>`
+          )
+          .join("");
+      }
+
+      function renderAudit(trail) {
+        const host = document.getElementById("audit-list");
+        if (!trail.length) {
+          host.innerHTML = '<p class="muted">No audit entries.</p>';
+          return;
+        }
+        host.innerHTML = trail
+          .map(
+            (a) => `<div style="padding:8px 0;border-top:1px solid var(--border)">
+              <div class="row between"><span><span class="badge neutral">${escapeHtml(a.action)}</span>
+              <span class="muted" style="font-size:12px;margin-left:6px">${escapeHtml(a.actor_email)}</span></span>
+              <span class="muted" style="font-size:12px">${fmtDate(a.created_at)}</span></div>
+              <code style="font-size:11px;color:var(--text-dim);word-break:break-all">row_hash ${escapeHtml((a.row_hash || "").slice(0, 24))}…</code>
+            </div>`
+          )
+          .join("");
+      }
+
+      async function openMaint(page, actions) {
+        const today = new Date().toISOString().slice(0, 10);
+        const wrap = document.createElement("div");
+        wrap.className = "center-screen";
+        wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50";
+        wrap.innerHTML = `<div class="auth-card"><h2 style="margin-bottom:16px">Log maintenance</h2>
+          <form id="m-form">
+            <div class="field"><label>Performed on</label><input type="date" id="m-date" value="${today}" required /></div>
+            <div class="field"><label>Notes</label><textarea id="m-notes" rows="3" maxlength="1000" placeholder="What was done"></textarea></div>
+            <div class="field err hidden" id="m-err"></div>
+            <div class="row" style="justify-content:flex-end">
+              <button type="button" class="btn" id="m-cancel">Cancel</button>
+              <button type="submit" class="btn primary">Save</button>
+            </div></form></div>`;
+        document.body.appendChild(wrap);
+        wrap.querySelector("#m-cancel").onclick = () => wrap.remove();
+        wrap.querySelector("#m-form").addEventListener("submit", async (ev) => {
+          ev.preventDefault();
+          const errBox = wrap.querySelector("#m-err");
+          errBox.classList.add("hidden");
+          try {
+            await api(`/equipment/${id}/maintenance`, {
+              method: "POST",
+              body: {
+                performed_on: wrap.querySelector("#m-date").value,
+                notes: wrap.querySelector("#m-notes").value.trim() || null,
+              },
+            });
+            toast("Maintenance logged", "success");
+            wrap.remove();
+            load(page, actions);
+          } catch (err) {
+            errBox.textContent = err.message;
+            errBox.classList.remove("hidden");
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
