@@ -1,4 +1,4 @@
-# freedox2026
+# Freedox2026
 
 ## a solution that works as a platform that consists of the data of all the equipments and stuff in a institution.
 
