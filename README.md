@@ -16,4 +16,12 @@
     - looking at the use case, ofcourse it's being used for certifications of the institution, so it would be convenient if they can export the reports for every single one of the labs, along with equipments.
 
 ### Basic Features:
-1. 
+1. RBAC - 3 roles:
+    1. Lab Assistant: 
+        - can do basic stuff such as updating lab equipments etc.
+    2. Department Head: 
+        - can view/edit report of their dept
+    3. superadmin:
+        - full CRUD across all departments
+
+2. SQL injection prevention
